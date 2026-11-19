@@ -8,6 +8,8 @@
  * Optional, used by provisionCoachIce():
  *   ICE_COACH_EMAIL, ICE_COACH_NAME, ICE_COACH_PIN
  */
+const DEFAULT_SPREADSHEET_ID = '1-1vOU_CbR-grqo0RGnX4UBXS7D7572XgxCpQSMUKUA8';
+
 const TABS = {
   Profiles: ['email','full_name','role','pin_hash','coach_email','active','created_at'],
   Assignments: ['id','coach_email','trainee_email','title','period','starts_on','ends_on','focus','notes','status','created_at','updated_at'],
@@ -48,16 +50,12 @@ function doPost(e) {
   }
 }
 
-function createDatabaseSpreadsheet() {
+function configureDatabaseSpreadsheet() {
   const props = PropertiesService.getScriptProperties();
-  let id = props.getProperty('ICE_COACH_SPREADSHEET_ID');
-  if (!id) {
-    const ss = SpreadsheetApp.create('ICE COACHING SYSTEM — Database');
-    id = ss.getId();
-    props.setProperty('ICE_COACH_SPREADSHEET_ID', id);
-  }
+  props.setProperty('ICE_COACH_SPREADSHEET_ID', DEFAULT_SPREADSHEET_ID);
+  const ss = SpreadsheetApp.openById(DEFAULT_SPREADSHEET_ID); // validates owner access
   ensureSheets_();
-  Logger.log('Database spreadsheet: ' + SpreadsheetApp.openById(id).getUrl());
+  Logger.log('Configured existing spreadsheet: ' + ss.getUrl());
 }
 
 function provisionCoachIce() {
@@ -203,15 +201,19 @@ function ensureSheets_() {
   Object.keys(TABS).forEach(name => {
     let sh = ss.getSheetByName(name);
     if (!sh) sh = ss.insertSheet(name);
+    const expected = TABS[name];
     if (sh.getLastRow() === 0) {
-      sh.getRange(1,1,1,TABS[name].length).setValues([TABS[name]]);
+      sh.getRange(1,1,1,expected.length).setValues([expected]);
       sh.setFrozenRows(1);
+    } else {
+      const actual = sh.getRange(1,1,1,expected.length).getValues()[0].map(String);
+      const matches = expected.every((header, i) => actual[i] === header);
+      if (!matches) throw new Error('Tab "' + name + '" exists but its header row does not match the ICE schema. Rename the tab or update its headers before continuing.');
     }
   });
 }
 function database_() {
-  const id = PropertiesService.getScriptProperties().getProperty('ICE_COACH_SPREADSHEET_ID');
-  if (!id) throw new Error('Run createDatabaseSpreadsheet() once in Apps Script.');
+  const id = PropertiesService.getScriptProperties().getProperty('ICE_COACH_SPREADSHEET_ID') || DEFAULT_SPREADSHEET_ID;
   return SpreadsheetApp.openById(id);
 }
 function sheet_(name) { return database_().getSheetByName(name); }
