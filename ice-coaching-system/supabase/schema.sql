@@ -75,6 +75,23 @@ as $$ select exists(select 1 from public.profiles where id = target_user and rol
 grant execute on function public.is_coach_of(uuid) to authenticated;
 grant execute on function public.has_role(uuid, public.app_role) to authenticated;
 
+-- Prevent a trainee from promoting their own profile to coach through self-service UPDATE.
+create or replace function public.prevent_profile_role_escalation()
+returns trigger language plpgsql security invoker set search_path = public
+as $
+begin
+  if old.role is distinct from new.role
+     and coalesce(auth.role(), '') <> 'service_role'
+     and current_user not in ('postgres', 'supabase_admin') then
+    raise exception 'Profile role can only be changed by an administrator';
+  end if;
+  return new;
+end;
+$;
+create trigger protect_profile_role
+before update on public.profiles
+for each row execute function public.prevent_profile_role_escalation();
+
 alter table public.profiles enable row level security;
 alter table public.coach_trainees enable row level security;
 alter table public.assignments enable row level security;
